@@ -1,4 +1,4 @@
-﻿# Bayesian-CART-Tree
+﻿# Bayesian-CART-Model
 Implementación de un árbol de clasificación Bayesiana, utilizando el algoritmo de Metropolis-Hasting.
 # Integrantes
 - Jorge Sossa
