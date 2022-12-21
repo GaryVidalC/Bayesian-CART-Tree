@@ -1,4 +1,4 @@
-from sklearn.datasets import load_breast_cancer
+
 import pandas as pd
 from sklearn import tree
 from sklearn.tree import DecisionTreeClassifier
@@ -12,33 +12,34 @@ import graphviz
 import scipy as sp  
 import matplotlib.pyplot as plt
 import dot2tex
-import numpy as np
 import pydotplus
 
 from sklearn.metrics import accuracy_score
 
 from scipy.special import gamma, factorial
-from sklearn.model_selection import train_test_split
 from scipy.special import gammaln
 from decimal import Decimal
 from scipy import special
 from numpy import exp
 
+
 ## https://github.com/jpnevrones/Decision-Tree-CART-/blob/master/DecisionTree/DecisionTree.py
 # https://github.com/jpnevrones/Decision-Tree-CART-
 
 
+#### Random State seed on Beta
 
 class DecisionTree(object):
     """
     Class to create decision tree model (CART)
     """
-    def __init__(self, alpha = 0.5, beta = 0.5, prob = [0.25]*4):
+    def __init__(self, alpha = 0.5, beta = 0.5, prob = [0.25]*4, random_seed = None):
         self.alpha = alpha
         self.beta = beta
         self.name = "10X"
         self.nodes = [0]
         self.prob = prob
+        self.seed = random_seed
         #self.depth = 1
 
     def copy(self):
@@ -57,8 +58,42 @@ class DecisionTree(object):
         new_tree.feature_names = self.feature_names
         new_tree.label_names = self.label_names
         new_tree.alpha_prior = self.alpha_prior
+        new_tree.seed = self.seed
         return new_tree
 
+    def info(self, name = None):
+        if name is None:
+            name = self.name
+        #Split
+        matches0 = re.finditer("([X0])",name)
+        matches0 = list(matches0)
+        
+        #Numero de splits posibles (Nodos hoja)
+        N_split = len(matches0)
+
+        #Numero de change posibles (Nodo interno)
+        matches2 = re.finditer("([^0X])",name)
+        matches2 = list(matches2)
+        N_change = len(matches2)
+        #Profundidad
+        depth = 0
+        
+        rand_grow_indexes=[match0.start() for match0 in matches0]
+        
+        raw_paths = [name[:rand_grow_index] for rand_grow_index in rand_grow_indexes]
+        for raw_path in raw_paths:
+            raw_path
+            path = self.get_path(raw_path)
+            l = len(path)
+            if l > depth:
+                depth = l
+                
+        return [depth, N_split,N_change] 
+            
+        
+        N_change = len(matches2)
+        return np.array([N_split, N_prune, N_change, N_swap])
+    
     def fit(self, _feature, _label):
         """
 
@@ -205,12 +240,20 @@ class DecisionTree(object):
     def insert(self, source_str, insert_str, pos):
         return source_str[:pos] + insert_str + source_str[pos:]
 
-    def split_MC(self, data):
+    def split_MC(self, data, n=0):
         """
          split information using Montecalo
         :param data:
         :return best_split result dict:
         """
+        if n>30:
+            print("No se pudo hacer el primer split")
+            return
+
+        seed = self.seed
+        if not seed is None:
+            np.random.seed(seed)
+            
         class_labels = np.unique(data[:,-1])
         best_index = 999
         best_val = 999
@@ -234,6 +277,9 @@ class DecisionTree(object):
         result['val'] = best_val
         result['groups'] = best_groups
         left_node, right_node = best_groups
+        if len(left_node) == 0 or len(right_node)==0:
+            result = self.split_MC(data,n+1)
+            return result
         result["left"] = self.terminal_node(left_node)
         result["right"] = self.terminal_node(right_node)
         
@@ -241,6 +287,8 @@ class DecisionTree(object):
         
         n_ik = self.compute_n_ik(best_groups)
         result["n_ik"] = n_ik
+
+        
 
         return result
 
@@ -254,6 +302,11 @@ class DecisionTree(object):
         :param data:
         :return best_split result dict:
         """
+        
+        seed = self.seed
+        if not seed is None:
+            np.random.seed(seed)
+            
         class_labels = np.unique(data[:,-1])
         best_index = 999
         best_val = 999
@@ -261,7 +314,7 @@ class DecisionTree(object):
         best_groups = None
 
         idx = np.random.choice(range(data.shape[1]-1))
-        val_aux = np.random.choice(data[:,idx])
+        val_aux = np.random.choice(np.unique(data[:,idx]))
         groups = self.split(idx, val_aux, data)
         gini_score = self.compute_gini_similarity(groups,class_labels)
 
@@ -379,8 +432,6 @@ class DecisionTree(object):
     def compute_n_ik(self, grupos):
         left_node, right_node = grupos
         categories = self.categories.reshape(-1,1)
-#         print (categories)
-#         print ((left_node[:,-1] == categories))
         n_ik = ((left_node[:,-1] == categories).sum(axis=1), (right_node[:,-1] == categories).sum(axis=1))
         return n_ik
 
@@ -393,6 +444,10 @@ class DecisionTree(object):
         :param data:
         :return best_split result dict:
         """
+        seed = self.seed
+        if not seed is None:
+            np.random.seed(seed)
+        
         name = self.name
         #Eligimos split aleatorio
         matches = re.finditer("([X0])",name)
@@ -403,8 +458,6 @@ class DecisionTree(object):
         
         raw_path = name[:rand_grow_index]
         path = self.get_path(raw_path)
-        #print("raw ", raw_path)
-        #print("camino ", path)
         last_order = path[-1]
         path = path[:-1]
         
@@ -417,17 +470,13 @@ class DecisionTree(object):
                 tree = tree["right"]
             path = path[1:]
 
-        # print("tree ",tree)
-        # data = tree['groups'][0]
+
         if last_order=="1": 
-            #print("if")
             data = tree['groups'][0]
         elif last_order=="2":
-            #print("else")
             data = tree['groups'][1]
 
         father_depth = tree["depth"]
-        #print(last_order)
         class_labels = np.unique(data[:,-1])
         best_index = 999
         best_val = 999
@@ -435,7 +484,7 @@ class DecisionTree(object):
         best_groups = None
 
         idx = np.random.choice(range(data.shape[1]-1))
-        val_aux = np.random.choice(data[:,idx])
+        val_aux = np.random.choice(np.unique(data[:,idx]))
         groups = self.split(idx, val_aux, data)
         gini_score = self.compute_gini_similarity(groups,class_labels)
 
@@ -452,21 +501,19 @@ class DecisionTree(object):
         result['groups'] = best_groups
         left_node, right_node = best_groups
 
-        #Agregue esta linea
+
         if len(right_node)==0 or len(left_node)==0:
+            if not seed is None:
+                self.seed = np.random.get_state()[1][0]
             self.split_MC3()
             return
         result["left"] = self.terminal_node(left_node)
         result["right"] = self.terminal_node(right_node)
-        # Se nos habia olvidado mutear esto y right estaba escrito como rigth xd
-         # tree["left"] = result
 
         
         if last_order=="1":
-            #print("ultimo last order 1")
             tree["left"] = result
         elif last_order=="2":
-            #print("ultimo last order 2")
             tree["right"] = result
 
         #Cambiamos el nombre
@@ -475,6 +522,10 @@ class DecisionTree(object):
 
     def random_choice(self, array):
         # "Given a estocastical vector choose value based on U uniform dist"
+        seed = self.seed
+        if not seed is None:
+            np.random.seed(seed)
+        
         p_acum=0
         U = np.random.uniform(0,1)
         for i, p in enumerate(array):
@@ -522,6 +573,11 @@ class DecisionTree(object):
         alpha = self.alpha
         beta = self.beta
         prob = np.array(self.prob)
+
+        seed = self.seed
+        if not seed is None:
+            np.random.seed(seed)
+        
         #Cambiar para  que no se pueda elegir split que generan conjuntos vacios( sale en el paper que no se pueden generar vacios)
         """
          split information using Montecalo
@@ -548,17 +604,14 @@ class DecisionTree(object):
         p_splits_mean = p_splits.mean()
         
         
-        print(f"vector split stand: {p_split_stand} ")
+#        print(f"vector split stand: {p_split_stand} ")
 #         print(f"suma vector stand : {sum(p_split_stand)} ")
         choice_path_index = self.random_choice(p_split_stand)
         
         #Elegimos el indice con los pesos de p_split
 #         print(f"eleccion : {choice_path_index} ")
-#         print(choice_path_index)
         path = paths[choice_path_index]
         
-#         print("raw ", raw_path)
-#         print("camino ", path)
         last_order = path[-1]
         path = path[:-1]
         
@@ -571,17 +624,13 @@ class DecisionTree(object):
                 tree = tree["right"]
             path = path[1:]
 
-        # print("tree ",tree)
-        # data = tree['groups'][0]
+
         if last_order=="1": 
-#             print("if")
             data = tree['groups'][0]
         elif last_order=="2":
-#             print("else")
             data = tree['groups'][1]
 
         father_depth = tree["depth"]
-#         print(last_order)
         class_labels = np.unique(data[:,-1])
         best_index = 999
         best_val = 999
@@ -609,6 +658,8 @@ class DecisionTree(object):
         if len(right_node)==0 or len(left_node)==0:
             if n>300:
                 return
+            if not seed is None:
+                self.seed = np.random.get_state()[1][0]
             self.split_MC4(n=n+1)
             
             
@@ -617,19 +668,15 @@ class DecisionTree(object):
         result["right"] = self.terminal_node(right_node)
         n_ik = self.compute_n_ik(best_groups)
         result["n_ik"] = n_ik
-        # Se nos habia olvidado mutear esto y right estaba escrito como rigth xd
-         # tree["left"] = result
+
 
         
         if last_order=="1":
-#             print("ultimo last order 1")
             tree["left"] = result
         elif last_order=="2":
-#             print("ultimo last order 2")
             tree["right"] = result
 
         #Cambiamos el nombre
-        #rand_grow_index = rand_grow_indexes[choice_path_index]
         
         rand_grow_index = rand_grow_indexes[choice_path_index]
         new_name = self.insert(name,"10",rand_grow_index)
@@ -660,9 +707,6 @@ class DecisionTree(object):
     
     def P_YX(self):
         alphal = self.alpha_prior
-        #alpha = 0.5
-        #eta = 0.5
-        #Cambiar para  que no se pueda elegir split que generan conjuntos vacios( sale en el paper que no se pueden generar vacios)
         """
          split information using Montecalo
         :param data:
@@ -694,10 +738,8 @@ class DecisionTree(object):
                 path = path[1:]
 
             if last_order=="1": 
-    #             print("if")
                 data = tree['n_ik'][0]
             elif last_order=="2":
-    #             print("else")
                 data = tree['n_ik'][1]
             n[i,:] = data
 
@@ -718,7 +760,11 @@ class DecisionTree(object):
         alpha = self.alpha
         beta = self.beta
         prob = np.array(self.prob)
-
+        
+        seed = self.seed
+        if not seed is None:
+            np.random.seed(seed)
+        
         name = self.name
         if name == "10X":
             print("Árbol minimo no se puede podar")
@@ -746,7 +792,7 @@ class DecisionTree(object):
         p_prunes_mean = p_prunes.mean()
         
         
-        print(f"vector prune stand: {p_prune_stand} ")
+#        print(f"vector prune stand: {p_prune_stand} ")
         choice_path_index = self.random_choice(p_prune_stand)
         path = paths[choice_path_index]
 
@@ -764,14 +810,10 @@ class DecisionTree(object):
                 tree = tree["right"]
             path = path[1:]
 
-        # print("tree ",tree)
-        # data = tree['groups'][0]
         if last_order=="1": 
-            print("if")
             data = tree['groups'][0]
             tree["left"] = self.terminal_node(data)
         elif last_order=="2":
-            print("else")
             data = tree['groups'][1]
             tree["right"] = self.terminal_node(data)
             
@@ -811,6 +853,11 @@ class DecisionTree(object):
         :param data:
         :return best_split result dict:
         """
+
+        seed = self.seed
+        if not seed is None:
+            np.random.seed(seed)
+        
         name = self.name
         #Elegimos nodo interno aleatorio para change
         matches = re.finditer("([^X0])",name)
@@ -820,8 +867,7 @@ class DecisionTree(object):
         rand_change_index=matches[rand_change_match_index].start()
         raw_path = name[:rand_change_index]
         path = self.get_path(raw_path)
-        #print("raw ", raw_path)
-        #print("camino ", path)
+
         
         tree = self.root
         while  len(path)>0:
@@ -843,8 +889,7 @@ class DecisionTree(object):
         val_aux = np.random.choice(np.unique(data[:,idx]))
         tree['index'] = idx
         tree['val'] = val_aux
-        # print("tree ",tree)
-        # data = tree['groups'][0]
+
 
     def update_tree(self, tree, data_prev=None):
         """
@@ -912,9 +957,11 @@ class DecisionTree(object):
 
         if condition :
             self.root = tree
-            #print(f"{n+1} intentos ")
             return 1 # Valor de B = q(Ti,Ti+1)P(Ti+1)/q(Ti+1,Ti)P(Ti) 
-        else: 
+        else:
+            seed = self.seed
+            if not seed is None:
+                self.seed = np.random.get_state()[1][0]
             self.change_MC3(n+1)
 
 
@@ -924,8 +971,13 @@ class DecisionTree(object):
         :param data:
         :return best_split result dict:
         """
+
+        seed = self.seed
+        if not seed is None:
+            np.random.seed(seed)
+            
         name = self.name
-        #Elegiir no interno no pruneable (tiene como hijo al menos un nodo interno)
+        #Elegir no interno no pruneable (tiene como hijo al menos un nodo interno)
         matches1 = re.finditer("10([0X])",name)
         matches1 = list(matches1)
 
@@ -941,8 +993,7 @@ class DecisionTree(object):
         rand_change_index = np.random.choice(matches3_index)
         raw_path = name[:rand_change_index]
         path = self.get_path(raw_path)
-        print("raw ", raw_path)
-        print("camino ", path)
+
         
         tree_aux = copy.deepcopy(self.root)
         tree = tree_aux
@@ -991,14 +1042,17 @@ class DecisionTree(object):
         else: 
             condition = False
         if n>10:
-            print("Se intento mucho")
+#            print("Se intento mucho [Swap]")
             return None
 
         if condition :
             self.root = tree
-            print(f"{n+1} intentos ")
+#            print(f"{n+1} intentos ")
             return 1 # Valor de B = q(Ti,Ti+1)P(Ti+1)/q(Ti+1,Ti)P(Ti) 
-        else: 
+        else:
+            seed = self.seed
+            if not seed is None:
+                self.seed = np.random.get_state()[1][0]
             self.swap_MC3(n+1)
 
 
@@ -1317,7 +1371,7 @@ class BayesianDecisionTree(object):
     """
     Class to create decision tree model (CART)
     """
-    def __init__(self, prob= [0.25,0.25,0.25,0.25], alpha = 0.5, beta = 0.5 , dynamic_prob = False):
+    def __init__(self, prob= [0.25,0.25,0.25,0.25], alpha = 0.5, beta = 0.5 , dynamic_prob = False, random_seed = None):
         self.alpha = alpha
         self.beta = beta
         self.prob = prob
@@ -1328,6 +1382,7 @@ class BayesianDecisionTree(object):
         self.feature_names = None
         self.labels_names = None
         self.dynamic_prob = []
+        self.seed = random_seed
     
     def copy(self):
         new_BayesianTree = BayesianDecisionTree()
@@ -1340,15 +1395,20 @@ class BayesianDecisionTree(object):
         new_BayesianTree.chosen = self.chosen
         new_BayesianTree.feature_names = self.feature_names
         new_BayesianTree.labels_names = self.labels_names 
-        new_BayesianTree.dynamic_prob = self.dynamic_prob 
+        new_BayesianTree.dynamic_prob = self.dynamic_prob
+        new_BayesianTree.seed = self.seed
         return new_BayesianTree
 
     def fit(self, n,X,Y, alpha_prior = None):
         alpha = self.alpha
         beta = self.beta
+
+        seed = self.seed
+        if not seed is None:
+            np.random.seed(seed)
         
         if self.iteration == 0:
-            tree = DecisionTree(alpha, beta)
+            tree = DecisionTree(alpha, beta, random_seed = seed)
             tree.fit_MC(X ,Y ,alpha_prior)
         else:
             tree = self.path[-1]
@@ -1391,19 +1451,13 @@ class BayesianDecisionTree(object):
                 B = new_tree.change_MC3()
             if choice == "swap":
                 B = new_tree.swap_MC3()
-            #print("eleccion :", choice)
-            #root = new_tree.light_root()
-            #graph = graphviz.Source(write_dot2(root, feature_names, labels_names), format="png") 
-            #graph.render(f"Grafos//grafo {i}")
-            #p_tree = PT(tree.root, alpha, beta)
-            #p_new_tree = PT(new_tree, alpha, beta)
+
             P_Y_tree = tree.P_YX()
             P_Y_new_tree = new_tree.P_YX()
             
-            #print(P_Y_tree)
-            #print("B choice :",choice, B)
+
             if not (B is None):
-                print(f"prueba : {P_Y_new_tree - P_Y_tree}")
+#                print(f"prueba : {P_Y_new_tree - P_Y_tree}")
                 A = np.min([1, B* np.exp(P_Y_new_tree - P_Y_tree)])
                 if U[i] <= A:
                     tree = new_tree
@@ -1422,9 +1476,13 @@ class BayesianDecisionTree(object):
         alpha = self.alpha
         beta = self.beta
         prob = self.prob
-        
+
+        seed = self.seed
+        if not seed is None:
+            np.random.seed(seed)
+            
         if self.iteration == 0:
-            tree = DecisionTree(alpha, beta)
+            tree = DecisionTree(alpha, beta, random_seed=seed)
             tree.fit_MC(X ,Y ,alpha_prior)
         else:
             tree = self.path[-1]
@@ -1452,8 +1510,7 @@ class BayesianDecisionTree(object):
                         choice = operation[j]
                         break
                         
-                
-                #print("eleccion:", choice)
+
                 if choice == "grow":
                     B = new_tree.split_MC4()
                     if not(B is None):
@@ -1477,7 +1534,7 @@ class BayesianDecisionTree(object):
             P_Y_new_tree = new_tree.P_YX()
 
             if not (Beta_total is None):
-                print(f"prueba : {P_Y_new_tree - P_Y_tree}")
+#                print(f"prueba : {P_Y_new_tree - P_Y_tree}")
                 A = np.min([1, Beta_total* np.exp(P_Y_new_tree - P_Y_tree)])
                 if U[i] <= A:
                     tree = new_tree
@@ -1507,6 +1564,9 @@ class BayesianDecisionTree(object):
         
     def set_prob(self, prob):
         self.prob = prob
+
+    def set_seed(self, seed):
+        self.seed = seed
         
     def render_decisiontrees(self, dir0):
         path = self.path
@@ -1539,12 +1599,21 @@ class BayesianDecisionTree(object):
             if not ((self.feature_names is None) or (self.labels_names is None)):
                 tree.set_labels(self.feature_names,self.labels_names)
                 tree.save_img_hd(dir0+ "/" + padding)
-
+    
     def path_acurracy(self, X, y ):
-        path = bayesian_tree.path
+        path = self.path
         accuracy = []
         for i, tree in enumerate(path):
             accuracy.append(accuracy_score(tree.predict(X), y))
         return accuracy
+
+    def path_info(self):
+        # (depth, leafs, inner_node)
+        path = self.path
+        info = []
+        
+        for i, tree in enumerate(path):
+            info.append(tree.info())
+        return np.array(info)
     
 
