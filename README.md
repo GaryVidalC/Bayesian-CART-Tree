@@ -5,7 +5,8 @@ Implementación de un árbol de clasificación Bayesiana, utilizando el algoritm
 - Gary Vidal
 # Guía
 - **bayesian_cart.py** : Contiene todas las clases y métodos implementados.
-- **Proyecto V7.ipynb** : Notebook donde se prueban las clases con distintos datasets
+- **Proyecto V7.ipynb** : Notebook donde se prueban las clases con distintos datasets.
+- **Proyecto V8.ipynb** : Notebook donde se prueban modificaciones de las clases con distintos datasets.
 - 
 Se puede encontrar un PDF donde se resume en una plana este proyecto.
 
