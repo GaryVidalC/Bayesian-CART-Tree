@@ -11,7 +11,7 @@ Implementación de un árbol de clasificación Bayesiana, utilizando el algoritm
 
 Se puede encontrar un PDF donde se resume en una plana este proyecto.
 
-**Decision_Tree_V4.ipynb** es una guía para intentar solucionar el problema con árboles grandes.
+**Decision_Tree_V4.ipynb** son resultados con métodos tradicionales de árboles, en particular cost complexity pruning.
 
 # Bibliografía.
 https://repository.upenn.edu/cgi/viewcontent.cgi?article=1083&context=statistics_papers
